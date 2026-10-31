@@ -44,7 +44,7 @@ Code: `sdk/cliproxy/auth/quota_routing.go`, tests in `sdk/cliproxy/auth/quota_ro
 
 ### Management panel logo
 
-The management panel (`/management.html`) is downloaded from the upstream [Management Center](https://github.com/router-for-me/Cli-Proxy-API-Management-Center) and auto-updated, so the fork does not edit it. Instead the proxy swaps in the fork logo as it serves the page: it replaces the favicon and injects a small script that points the sidebar, login splash, and About logos at the fork logo. If an upstream panel release renames those logo classes, the panel falls back to its stock logo; update the selector in `panelLogoScript`.
+The management panel (`/management.html`) is downloaded from the upstream [Management Center](https://github.com/router-for-me/Cli-Proxy-API-Management-Center) and auto-updated, so the fork does not edit it. Instead the proxy injects a small script as it serves the page, which points the favicon and the sidebar, login, splash, and About logos at the fork logo, including after the panel resets them. If an upstream panel release renames those logo classes, the panel falls back to its stock logo; update the selector in `panelLogoScript`.
 
 Code: `internal/api/management_panel_logo.go`, logo in `internal/api/assets/panel_logo.svg`, tests in `internal/api/management_panel_logo_test.go`.
 

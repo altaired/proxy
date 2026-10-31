@@ -11,9 +11,8 @@ import (
 
 func TestWithPanelLogo(t *testing.T) {
 	t.Parallel()
-	favicon := `<link rel="icon" type="image/svg+xml" href="` + panelLogoDataURI + `">`
-	// The panel inlines its JS bundle in <head>; strings inside it must stay untouched.
-	bundle := `<script>const a='<link rel="icon" href="x">',b='</head>';</script>`
+	// The panel inlines its JS bundle in <head>; a </head> inside it is not markup.
+	bundle := `<script>const b='</head>';</script>`
 
 	tests := []struct {
 		name string
@@ -21,14 +20,9 @@ func TestWithPanelLogo(t *testing.T) {
 		want string
 	}{
 		{
-			name: "replaces the favicon and injects the logo script",
+			name: "injects the logo script before the real end of head",
 			html: `<head><link rel="icon" href="vite.svg">` + bundle + `</head><body></body>`,
-			want: `<head>` + favicon + bundle + string(panelLogoScript) + `</head><body></body>`,
-		},
-		{
-			name: "adds a favicon when the panel has none",
-			html: `<head>` + bundle + `</head><body></body>`,
-			want: `<head>` + bundle + favicon + string(panelLogoScript) + `</head><body></body>`,
+			want: `<head><link rel="icon" href="vite.svg">` + bundle + string(panelLogoScript) + `</head><body></body>`,
 		},
 		{
 			name: "leaves a panel without a head unchanged",
@@ -63,7 +57,7 @@ func TestManagementPanelServesForkLogo(t *testing.T) {
 		t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
 	}
 	body := rr.Body.String()
-	if strings.Contains(body, "vite.svg") || !strings.Contains(body, panelLogoDataURI) {
+	if !strings.Contains(body, string(panelLogoScript)+"</head>") {
 		t.Fatalf("panel was served without the fork logo: %s", body)
 	}
 }
