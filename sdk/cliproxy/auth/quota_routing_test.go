@@ -8,7 +8,6 @@ import (
 	"time"
 
 	internallogging "github.com/router-for-me/CLIProxyAPI/v8/internal/logging"
-	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
 	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
 )
 
@@ -196,16 +195,12 @@ func TestQuotaAwareSelector_SessionAffinityKeepsBoundSubscription(t *testing.T) 
 	}
 }
 
-// A result for one model refreshes only that model's scheduler shard, so ranking
-// for another model must read the credential's latest quota snapshot.
-func TestManager_QuotaAwareUsesLatestObservationAcrossModelShards(t *testing.T) {
+// The Manager feeds each response's quota headers into the next selection.
+func TestManager_QuotaAwarePicksFromLatestObservation(t *testing.T) {
 	now := time.Now()
 	manager := NewManager(nil, &QuotaAwareSelector{}, nil)
-	reg := registry.GetGlobalRegistry()
-	for _, authID := range []string{"quota-a", "quota-b"} {
-		reg.RegisterClient(authID, "claude", []*registry.ModelInfo{{ID: "model-a"}, {ID: "model-b"}})
-		t.Cleanup(func() { reg.UnregisterClient(authID) })
-	}
+	manager.RegisterExecutor(schedulerProviderTestExecutor{provider: "claude"})
+	registerSchedulerModels(t, "claude", "claude-sonnet", "quota-a", "quota-b")
 	for _, auth := range []*Auth{
 		claudeSubscription("quota-a", 0.10, now.Add(2*24*time.Hour), 0),
 		claudeSubscription("quota-b", 0.10, now.Add(5*24*time.Hour), 0),
@@ -215,41 +210,28 @@ func TestManager_QuotaAwareUsesLatestObservationAcrossModelShards(t *testing.T) 
 			t.Fatalf("Register(%s) error = %v", auth.ID, err)
 		}
 	}
-	for _, model := range []string{"model-a", "model-b"} {
-		picked, err := manager.scheduler.pickSingle(context.Background(), "claude", model, cliproxyexecutor.Options{}, nil)
-		if err != nil || picked.ID != "quota-a" {
-			t.Fatalf("pickSingle(%s) = (%v, %v), want quota-a", model, picked, err)
+	pick := func() string {
+		t.Helper()
+		picked, _, err := manager.pickNext(context.Background(), "claude", "claude-sonnet", cliproxyexecutor.Options{}, nil)
+		if err != nil {
+			t.Fatalf("pickNext() error = %v", err)
 		}
+		return picked.ID
+	}
+	if got := pick(); got != "quota-a" {
+		t.Fatalf("pickNext() = %q, want quota-a (soonest weekly reset)", got)
 	}
 
-	// A successful model-a response reports quota-a's 5h window as used up.
+	// A successful response reports quota-a's 5h window as used up.
 	ctx := internallogging.WithResponseHeadersHolder(context.Background())
 	headers := http.Header{}
 	for name, value := range claudeQuotaHeaders(0.30, now.Add(2*24*time.Hour), 1.0) {
 		headers.Set(name, value)
 	}
 	internallogging.SetResponseHeaders(ctx, headers)
-	manager.MarkResult(ctx, Result{AuthID: "quota-a", Provider: "claude", Model: "model-a", Success: true})
+	manager.MarkResult(ctx, Result{AuthID: "quota-a", Provider: "claude", Model: "claude-sonnet", Success: true})
 
-	picked, err := manager.scheduler.pickSingle(context.Background(), "claude", "model-b", cliproxyexecutor.Options{}, nil)
-	if err != nil || picked.ID != "quota-b" {
-		t.Fatalf("pickSingle(model-b) after exhaustion = (%v, %v), want quota-b", picked, err)
-	}
-}
-
-func TestSchedulerPick_QuotaAwareRoundRobinsUnobservedSubscriptions(t *testing.T) {
-	t.Parallel()
-	scheduler := newSchedulerForTest(
-		&QuotaAwareSelector{},
-		claudeSubscription("b", -1, time.Time{}, 0),
-		claudeSubscription("a", -1, time.Time{}, 0),
-		claudeSubscription("c-known", 0.10, time.Now().Add(3*time.Hour), 0),
-	)
-
-	for index, wantID := range []string{"a", "b", "a"} {
-		got, err := scheduler.pickSingle(context.Background(), "claude", "", cliproxyexecutor.Options{}, nil)
-		if err != nil || got.ID != wantID {
-			t.Fatalf("pickSingle() #%d = (%v, %v), want %s", index, got, err, wantID)
-		}
+	if got := pick(); got != "quota-b" {
+		t.Fatalf("pickNext() after exhaustion = %q, want quota-b", got)
 	}
 }

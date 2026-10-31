@@ -18,6 +18,10 @@ import (
 // restart spreads out instead of pinning every new session to one account until a
 // response reports its usage. Credentials without quota data (API keys, providers
 // that do not report usage) keep round-robin behavior.
+//
+// It is deliberately a custom Selector rather than a built-in scheduler strategy:
+// the Manager then always calls Pick with the latest auth snapshots, and the fork
+// stays out of the upstream scheduler code.
 type QuotaAwareSelector struct {
 	roundRobin RoundRobinSelector
 }
@@ -53,6 +57,14 @@ type quotaWindow struct {
 // Pick selects the subscription with the soonest reset, or round-robins among the
 // best-ranked credentials when none of them has a reset time.
 func (s *QuotaAwareSelector) Pick(ctx context.Context, provider, model string, opts cliproxyexecutor.Options, auths []*Auth) (*Auth, error) {
+	// The Manager only hands custom selectors credentials that already passed the
+	// availability check for each credential's upstream model. Rechecking against
+	// the route model could apply unrelated alias cooldowns, so only narrow to the
+	// highest priority tier (session affinity may pass several tiers).
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	ctx = context.WithValue(ctx, prevalidatedAuthCandidatesKey{}, true)
 	now := time.Now()
 	available, err := getSelectorAvailableAuths(ctx, auths, provider, model, now)
 	if err != nil {
@@ -61,10 +73,10 @@ func (s *QuotaAwareSelector) Pick(ctx context.Context, provider, model string, o
 	available = preferCodexWebsocketAuths(ctx, provider, available)
 
 	ranks := make([]quotaRoutingRank, len(available))
-	best := -1
+	best := 0
 	for i, candidate := range available {
 		ranks[i] = quotaRoutingRankFor(candidate, now)
-		if best < 0 || ranks[i].less(ranks[best], candidate.ID, available[best].ID) {
+		if ranks[i].less(ranks[best], candidate.ID, available[best].ID) {
 			best = i
 		}
 	}
@@ -78,50 +90,6 @@ func (s *QuotaAwareSelector) Pick(ctx context.Context, provider, model string, o
 		}
 	}
 	return s.roundRobin.Pick(ctx, provider, model, opts, tied)
-}
-
-// pickQuotaAwareLocked is the scheduler counterpart of QuotaAwareSelector.Pick.
-func (m *modelScheduler) pickQuotaAwareLocked(view *readyView, predicate func(*scheduledAuth) bool) *scheduledAuth {
-	rankOf := m.quotaRankFunc(time.Now())
-	best, bestRank := bestQuotaAwareEntry(view.flat, predicate, rankOf)
-	if best == nil || bestRank.group == quotaGroupHeadroom {
-		return best
-	}
-	return view.pickRoundRobin(func(entry *scheduledAuth) bool {
-		if predicate != nil && !predicate(entry) {
-			return false
-		}
-		return rankOf(entry).group == bestRank.group
-	})
-}
-
-// quotaRankFunc ranks shard entries from the provider-level auth snapshot. Results
-// scoped to one model refresh only that model's shard, so an entry's own snapshot
-// can carry an older quota observation than the provider-level one.
-func (m *modelScheduler) quotaRankFunc(now time.Time) func(*scheduledAuth) quotaRoutingRank {
-	return func(entry *scheduledAuth) quotaRoutingRank {
-		auth := entry.auth
-		if meta := m.authMetas[auth.ID]; meta != nil && meta.auth != nil {
-			auth = meta.auth
-		}
-		return quotaRoutingRankFor(auth, now)
-	}
-}
-
-// bestQuotaAwareEntry returns the highest-ranked entry matching predicate.
-func bestQuotaAwareEntry(entries []*scheduledAuth, predicate func(*scheduledAuth) bool, rankOf func(*scheduledAuth) quotaRoutingRank) (*scheduledAuth, quotaRoutingRank) {
-	var best *scheduledAuth
-	var bestRank quotaRoutingRank
-	for _, entry := range entries {
-		if entry == nil || entry.auth == nil || (predicate != nil && !predicate(entry)) {
-			continue
-		}
-		rank := rankOf(entry)
-		if best == nil || rank.less(bestRank, entry.auth.ID, best.auth.ID) {
-			best, bestRank = entry, rank
-		}
-	}
-	return best, bestRank
 }
 
 func (r quotaRoutingRank) less(other quotaRoutingRank, id, otherID string) bool {

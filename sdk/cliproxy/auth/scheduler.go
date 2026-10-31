@@ -22,7 +22,6 @@ const (
 	schedulerStrategyRoundRobin         schedulerStrategy = 1
 	schedulerStrategyFillFirst          schedulerStrategy = 2
 	schedulerStrategyWeightedRoundRobin schedulerStrategy = 3
-	schedulerStrategyQuotaAware         schedulerStrategy = 4
 )
 
 // scheduledState describes how an auth currently participates in a model shard.
@@ -73,10 +72,7 @@ type scheduledAuthMeta struct {
 
 // modelScheduler tracks ready and blocked auths for one provider/model combination.
 type modelScheduler struct {
-	modelKey string
-	// authMetas is the owning providerScheduler.auths map, which holds the latest
-	// snapshot of every auth even when this shard's entry was not refreshed.
-	authMetas       map[string]*scheduledAuthMeta
+	modelKey        string
 	entries         map[string]*scheduledAuth
 	priorityOrder   []int
 	readyByPriority map[int]*readyBucket
@@ -174,8 +170,6 @@ func selectorStrategy(selector Selector) schedulerStrategy {
 		return schedulerStrategyFillFirst
 	case *WeightedRoundRobinSelector:
 		return schedulerStrategyWeightedRoundRobin
-	case *QuotaAwareSelector:
-		return schedulerStrategyQuotaAware
 	case nil, *RoundRobinSelector:
 		return schedulerStrategyRoundRobin
 	default:
@@ -537,29 +531,6 @@ func (s *authScheduler) pickMixedWithStrategy(ctx context.Context, providers []s
 		return nil, "", s.mixedUnavailableErrorLocked(normalized, model, predicate)
 	}
 
-	if strategy == schedulerStrategyQuotaAware {
-		// Rank subscriptions across providers; credentials without a reset time
-		// fall through to the provider rotation below, which ranks within each provider.
-		var best *scheduledAuth
-		var bestRank quotaRoutingRank
-		for _, shard := range candidateShards {
-			if shard == nil {
-				continue
-			}
-			bucket := shard.readyByPriority[bestPriority]
-			if bucket == nil {
-				continue
-			}
-			picked, rank := bestQuotaAwareEntry(bucket.all.flat, predicate, shard.quotaRankFunc(now))
-			if picked != nil && (best == nil || rank.less(bestRank, picked.auth.ID, best.auth.ID)) {
-				best, bestRank = picked, rank
-			}
-		}
-		if best != nil && bestRank.group == quotaGroupHeadroom && best.meta != nil {
-			return best.auth, best.meta.providerKey, nil
-		}
-	}
-
 	cursorKey := strings.Join(normalized, ",") + ":" + modelKey
 	if strategy == schedulerStrategyWeightedRoundRobin {
 		entries := make([]*scheduledAuth, 0)
@@ -642,7 +613,7 @@ func (s *authScheduler) pickMixedWithStrategy(ctx context.Context, providers []s
 		if shard == nil {
 			continue
 		}
-		picked := shard.pickReadyAtPriorityLocked(false, bestPriority, strategy, predicate)
+		picked := shard.pickReadyAtPriorityLocked(false, bestPriority, schedulerStrategyRoundRobin, predicate)
 		if picked == nil {
 			continue
 		}
@@ -1202,7 +1173,6 @@ func (p *providerScheduler) ensureModelLocked(modelKey string, now time.Time) *m
 	}
 	shard := &modelScheduler{
 		modelKey:        modelKey,
-		authMetas:       p.auths,
 		entries:         make(map[string]*scheduledAuth),
 		readyByPriority: make(map[int]*readyBucket),
 	}
@@ -1414,8 +1384,6 @@ func (m *modelScheduler) pickReadyAtPriorityLocked(preferWebsocket bool, priorit
 		picked = view.pickFirst(predicate)
 	case schedulerStrategyWeightedRoundRobin:
 		picked = view.pickWeighted(predicate)
-	case schedulerStrategyQuotaAware:
-		picked = m.pickQuotaAwareLocked(view, predicate)
 	default:
 		picked = view.pickRoundRobin(predicate)
 	}
