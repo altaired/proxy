@@ -78,7 +78,7 @@ func normalizedRoutingRuntimeState(cfg *config.Config) routingRuntimeState {
 		state.strategy = "weighted-round-robin"
 	case "fill-first", "fillfirst", "ff":
 		state.strategy = "fill-first"
-	case "quota-aware", "quotaaware":
+	case "quota-aware":
 		state.strategy = "quota-aware"
 	}
 	state.sessionAffinity = cfg.Routing.SessionAffinity
