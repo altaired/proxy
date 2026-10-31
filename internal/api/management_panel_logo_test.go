@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestWithPanelLogo(t *testing.T) {
@@ -50,6 +51,9 @@ func TestManagementPanelServesForkLogo(t *testing.T) {
 	server := newTestServer(t)
 
 	req := httptest.NewRequest(http.MethodGet, "/management.html", nil)
+	// A browser revalidating a page cached before the logo changed must still get
+	// the full page, even though the panel file itself has not changed.
+	req.Header.Set("If-Modified-Since", time.Now().Add(time.Hour).UTC().Format(http.TimeFormat))
 	rr := httptest.NewRecorder()
 	server.engine.ServeHTTP(rr, req)
 
