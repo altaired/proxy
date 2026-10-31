@@ -47,7 +47,7 @@ Code: `sdk/cliproxy/auth/quota_routing.go`, tests in `sdk/cliproxy/auth/quota_ro
 The management panel (`/management.html`) is downloaded from the upstream [Management Center](https://github.com/router-for-me/Cli-Proxy-API-Management-Center) and auto-updated, so the fork does not edit it. Instead the proxy injects its changes as it serves the page:
 
 - **Logo:** a small script points the favicon and the sidebar, login, splash, and About logos at the fork logo, including after the panel resets them.
-- **Routing page:** while `routing.strategy` is `quota-aware`, the "Within a tier" strategy picker is hidden. The panel only knows the built-in strategies, so it would show round-robin and could save it back. Priority tiers, session affinity, and retries on that page still work.
+- **Strategy pickers:** while `routing.strategy` is `quota-aware`, the Routing page's "Within a tier" picker and the Config page's routing strategy field are hidden. The panel only knows the built-in strategies, so it would show round-robin and could save it back. Priority tiers, session affinity, and retries still work.
 
 If an upstream panel release renames the classes these rely on, the panel falls back to its stock look; update the selectors in `panelLogoScript` and `panelQuotaAwareStyle`.
 

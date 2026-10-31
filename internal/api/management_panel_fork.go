@@ -32,11 +32,12 @@ var (
 		`if(icon.getAttribute("type")!=="image/svg+xml")icon.setAttribute("type","image/svg+xml")}};` +
 		`new MutationObserver(swap).observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:["src","href","type"]});swap()})()</script>`)
 
-	// panelQuotaAwareStyle hides the Routing page's "Within a tier" strategy picker
-	// while routing.strategy is quota-aware. The panel only knows the built-in
-	// strategies, so it would show round-robin and could save it back; the rest of
-	// the page (priority tiers, session affinity, retries) still applies.
-	panelQuotaAwareStyle = []byte(`<style>[data-routing-policy-column] section:has([class*=strategyGroup]){display:none}</style>`)
+	// panelQuotaAwareStyle hides the panel's routing strategy pickers (the Routing
+	// page's "Within a tier" picker and the Config page's strategy field) while
+	// routing.strategy is quota-aware. The panel only knows the built-in strategies,
+	// so it would show round-robin and could save it back; the rest of both pages
+	// (priority tiers, session affinity, retries) still applies.
+	panelQuotaAwareStyle = []byte(`<style>[data-routing-policy-column] section:has([class*=strategyGroup]),#cfg-field-routingStrategy{display:none}</style>`)
 )
 
 // serveForkManagementPanel serves the downloaded upstream management panel with the
