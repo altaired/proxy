@@ -160,10 +160,16 @@ access:
 
 # Routing strategy for selecting credentials when multiple match.
 routing:
-  strategy: "round-robin" # round-robin (default), weighted-round-robin, fill-first
+  strategy: "round-robin" # round-robin (default), weighted-round-robin, fill-first, quota-aware
   # weighted-round-robin uses each credential's integer weight (default 1, maximum 1,000,000).
   # Non-positive weights exclude the credential while this strategy is active.
   # For OAuth/file credentials, add a top-level numeric "weight" field to the auth JSON.
+  # quota-aware spends Claude and Codex subscription quota before it resets: among subscriptions
+  # with headroom it uses the one whose weekly window resets soonest until that runs out.
+  # Subscriptions without usage data yet (for example after a restart) get one request first so
+  # their reset time is learned. API keys and other providers keep round-robin order.
+  # Credential priority tiers still apply first. Pair it with session-affinity so ongoing
+  # sessions stay on their subscription (prompt caching is per account).
   # Enable universal session-sticky routing for all clients.
   # Explicit Claude Code, Codex, OpenCode, and pi session headers are preferred,
   # followed by prompt_cache_key, Responses conversation IDs, legacy body IDs,
