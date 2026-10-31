@@ -58,6 +58,17 @@ func TestQuotaAwareSelector_Pick(t *testing.T) {
 			want: "b-unobserved",
 		},
 		{
+			name: "re-probes a subscription whose latest response had no usage windows",
+			auths: []*Auth{
+				claudeSubscription("a-known", 0.10, now.Add(3*time.Hour), 0),
+				{
+					ID: "b-retry-after-only", Provider: "claude", Metadata: map[string]any{"access_token": "token"},
+					Quota: QuotaState{ObservedAt: now, Signals: map[string]string{"Retry-After": "30"}},
+				},
+			},
+			want: "b-retry-after-only",
+		},
+		{
 			name: "skips a subscription with an exhausted window",
 			auths: []*Auth{
 				claudeSubscription("a-5h-exhausted", 0.40, now.Add(3*time.Hour), 1.0),

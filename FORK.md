@@ -33,7 +33,7 @@ routing:
 
 | Credential | Order |
 | --- | --- |
-| Subscription without usage data yet (for example after a restart) | First, in round-robin, until a response reports its usage |
+| Subscription without usage data (after a restart, or its last response carried none) | First, in round-robin, until a response reports its usage |
 | Subscription with headroom | By soonest weekly reset |
 | API keys and providers that do not report usage | Round-robin |
 | Subscription with a used-up 5h or weekly window | Last |

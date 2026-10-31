@@ -21,7 +21,8 @@ import (
 //
 // It is deliberately a custom Selector rather than a built-in scheduler strategy:
 // the Manager then always calls Pick with the latest auth snapshots, and the fork
-// stays out of the upstream scheduler code.
+// stays out of the upstream scheduler code. Pick expects the Manager's
+// availability-filtered candidates and does not recheck cooldowns itself.
 type QuotaAwareSelector struct {
 	roundRobin RoundRobinSelector
 }
@@ -30,8 +31,10 @@ type QuotaAwareSelector struct {
 type quotaRoutingGroup int
 
 const (
-	// quotaGroupUnobserved is a subscription the proxy has no usage snapshot for yet.
-	// Snapshots are in-memory only, so every subscription starts here after a restart.
+	// quotaGroupUnobserved is a subscription without usable usage windows: never
+	// observed (snapshots are in-memory only, so every subscription starts here after
+	// a restart), or its latest response carried none, such as an error that only
+	// has Retry-After.
 	quotaGroupUnobserved quotaRoutingGroup = iota
 	// quotaGroupHeadroom is a subscription with remaining quota in every window.
 	quotaGroupHeadroom
@@ -111,13 +114,12 @@ func quotaRoutingRankFor(auth *Auth, now time.Time) quotaRoutingRank {
 	if provider != "claude" && provider != "codex" {
 		return quotaRoutingRank{group: quotaGroupNoData}
 	}
-	if auth.Quota.ObservedAt.IsZero() {
-		return quotaRoutingRank{group: quotaGroupUnobserved}
-	}
 	windows := observedQuotaWindows(provider, auth.Quota, now)
 	if len(windows) == 0 {
-		return quotaRoutingRank{group: quotaGroupNoData}
+		return quotaRoutingRank{group: quotaGroupUnobserved}
 	}
+	// The longest window (normally the weekly one) decides. A plan without a weekly
+	// limit is ranked by its shorter window, since that quota is what a reset loses.
 	longest := windows[0]
 	for _, window := range windows {
 		if window.remaining <= 0 {
