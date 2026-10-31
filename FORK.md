@@ -49,7 +49,7 @@ The management panel (`/management.html`) is downloaded from the upstream [Manag
 - **Logo:** a small script points the favicon and the sidebar, login, splash, and About logos at the fork logo, including after the panel resets them.
 - **Strategy pickers:** while `routing.strategy` is `quota-aware`, the Routing page's "Within a tier" picker and the Config page's routing strategy field are hidden. The panel only knows the built-in strategies, so it would show round-robin and could save it back. Priority tiers, session affinity, and retries still work.
 
-If an upstream panel release renames the classes these rely on, the panel falls back to its stock look; update the selectors in `panelLogoScript` and `panelQuotaAwareStyle`.
+If an upstream panel release renames the classes or ids these rely on, the panel falls back to its stock look; update the selectors in `panelLogoScript` and `panelQuotaAwareStyle`.
 
 Code: `internal/api/management_panel_fork.go`, logo in `internal/api/assets/panel_logo.svg`, tests in `internal/api/management_panel_fork_test.go`.
 
