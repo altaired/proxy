@@ -42,15 +42,20 @@ Credential priority tiers still apply first. With `session-affinity`, ongoing se
 
 Code: `sdk/cliproxy/auth/quota_routing.go`, tests in `sdk/cliproxy/auth/quota_routing_test.go` and `sdk/cliproxy/service_config_quota_test.go`.
 
-### Management panel logo
+### Management panel customizations
 
-The management panel (`/management.html`) is downloaded from the upstream [Management Center](https://github.com/router-for-me/Cli-Proxy-API-Management-Center) and auto-updated, so the fork does not edit it. Instead the proxy injects a small script as it serves the page, which points the favicon and the sidebar, login, splash, and About logos at the fork logo, including after the panel resets them. If an upstream panel release renames those logo classes, the panel falls back to its stock logo; update the selector in `panelLogoScript`.
+The management panel (`/management.html`) is downloaded from the upstream [Management Center](https://github.com/router-for-me/Cli-Proxy-API-Management-Center) and auto-updated, so the fork does not edit it. Instead the proxy injects its changes as it serves the page:
 
-Code: `internal/api/management_panel_logo.go`, logo in `internal/api/assets/panel_logo.svg`, tests in `internal/api/management_panel_logo_test.go`.
+- **Logo:** a small script points the favicon and the sidebar, login, splash, and About logos at the fork logo, including after the panel resets them.
+- **Routing page:** while `routing.strategy` is `quota-aware`, the "Within a tier" strategy picker is hidden. The panel only knows the built-in strategies, so it would show round-robin and could save it back. Priority tiers, session affinity, and retries on that page still work.
+
+If an upstream panel release renames the classes these rely on, the panel falls back to its stock look; update the selectors in `panelLogoScript` and `panelQuotaAwareStyle`.
+
+Code: `internal/api/management_panel_fork.go`, logo in `internal/api/assets/panel_logo.svg`, tests in `internal/api/management_panel_fork_test.go`.
 
 ## Upstream touch points
 
 | File | Change |
 | --- | --- |
 | `sdk/cliproxy/service_config.go` | Maps `routing.strategy: quota-aware` to `QuotaAwareSelector` |
-| `internal/api/server_management.go` | Serves the panel through `serveManagementPanelWithLogo` instead of `c.File` |
+| `internal/api/server_management.go` | Serves the panel through `serveForkManagementPanel` instead of `c.File` |

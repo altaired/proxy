@@ -336,5 +336,5 @@ func (s *Server) serveManagementControlPanel(c *gin.Context) {
 		}
 	}
 
-	serveManagementPanelWithLogo(c, filePath)
+	serveForkManagementPanel(c, filePath, cfg.Routing.Strategy)
 }

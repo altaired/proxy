@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	log "github.com/sirupsen/logrus"
@@ -30,31 +31,42 @@ var (
 		`for(const icon of document.querySelectorAll('link[rel="icon"]')){if(icon.getAttribute("href")!==src)icon.setAttribute("href",src);` +
 		`if(icon.getAttribute("type")!=="image/svg+xml")icon.setAttribute("type","image/svg+xml")}};` +
 		`new MutationObserver(swap).observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:["src","href","type"]});swap()})()</script>`)
+
+	// panelQuotaAwareStyle hides the Routing page's "Within a tier" strategy picker
+	// while routing.strategy is quota-aware. The panel only knows the built-in
+	// strategies, so it would show round-robin and could save it back; the rest of
+	// the page (priority tiers, session affinity, retries) still applies.
+	panelQuotaAwareStyle = []byte(`<style>[data-routing-policy-column] section:has([class*=strategyGroup]){display:none}</style>`)
 )
 
-// serveManagementPanelWithLogo serves the downloaded upstream management panel with
-// the fork logo swapped in at serve time, so panel auto-updates keep working without
-// a forked panel. It skips conditional responses: the file's modification time does
-// not change when the logo does, so a 304 could keep serving a cached stock page.
-func serveManagementPanelWithLogo(c *gin.Context, filePath string) {
+// serveForkManagementPanel serves the downloaded upstream management panel with the
+// fork customizations injected at serve time, so panel auto-updates keep working
+// without a forked panel. It skips conditional responses: the file's modification
+// time does not change when the injected content does, so a 304 could keep serving
+// a stale page.
+func serveForkManagementPanel(c *gin.Context, filePath, routingStrategy string) {
 	html, err := os.ReadFile(filePath)
 	if err != nil {
 		log.WithError(err).Error("failed to read management control panel asset")
 		c.AbortWithStatus(http.StatusInternalServerError)
 		return
 	}
-	c.Data(http.StatusOK, "text/html; charset=utf-8", withPanelLogo(html))
+	c.Data(http.StatusOK, "text/html; charset=utf-8", withForkPanel(html, routingStrategy))
 }
 
-// withPanelLogo injects the logo script at the end of <head>. The panel inlines its
-// JS bundle in <head>, so the last </head> is the real one.
-func withPanelLogo(html []byte) []byte {
+// withForkPanel injects the logo script, and the quota-aware style when that strategy
+// is configured, at the end of <head>. The panel inlines its JS bundle in <head>, so
+// the last </head> is the real one.
+func withForkPanel(html []byte, routingStrategy string) []byte {
 	head := bytes.LastIndex(html, panelHeadClose)
 	if head < 0 {
 		return html
 	}
-	out := make([]byte, 0, len(html)+len(panelLogoScript))
+	out := make([]byte, 0, len(html)+len(panelLogoScript)+len(panelQuotaAwareStyle))
 	out = append(out, html[:head]...)
 	out = append(out, panelLogoScript...)
+	if strings.EqualFold(strings.TrimSpace(routingStrategy), "quota-aware") {
+		out = append(out, panelQuotaAwareStyle...)
+	}
 	return append(out, html[head:]...)
 }
