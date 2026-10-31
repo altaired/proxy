@@ -539,7 +539,7 @@ func (s *authScheduler) pickMixedWithStrategy(ctx context.Context, providers []s
 
 	if strategy == schedulerStrategyQuotaAware {
 		// Rank subscriptions across providers; credentials without a reset time
-		// fall through to the provider rotation below.
+		// fall through to the provider rotation below, which ranks within each provider.
 		var best *scheduledAuth
 		var bestRank quotaRoutingRank
 		for _, shard := range candidateShards {
@@ -555,7 +555,7 @@ func (s *authScheduler) pickMixedWithStrategy(ctx context.Context, providers []s
 				best, bestRank = picked, rank
 			}
 		}
-		if best != nil && bestRank.group <= quotaGroupHeadroom && best.meta != nil {
+		if best != nil && bestRank.group == quotaGroupHeadroom && best.meta != nil {
 			return best.auth, best.meta.providerKey, nil
 		}
 	}
@@ -642,7 +642,7 @@ func (s *authScheduler) pickMixedWithStrategy(ctx context.Context, providers []s
 		if shard == nil {
 			continue
 		}
-		picked := shard.pickReadyAtPriorityLocked(false, bestPriority, schedulerStrategyRoundRobin, predicate)
+		picked := shard.pickReadyAtPriorityLocked(false, bestPriority, strategy, predicate)
 		if picked == nil {
 			continue
 		}

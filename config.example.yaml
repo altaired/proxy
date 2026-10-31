@@ -166,10 +166,12 @@ routing:
   # For OAuth/file credentials, add a top-level numeric "weight" field to the auth JSON.
   # quota-aware spends Claude and Codex subscription quota before it resets: among subscriptions
   # with headroom it uses the one whose weekly window resets soonest until that runs out.
-  # Subscriptions without usage data yet (for example after a restart) get one request first so
-  # their reset time is learned. API keys and other providers keep round-robin order.
+  # Subscriptions without usage data yet (for example after a restart) are tried first until a
+  # response reports their usage, so their reset time is learned. API keys and other providers keep round-robin order.
   # Credential priority tiers still apply first. Pair it with session-affinity so ongoing
-  # sessions stay on their subscription (prompt caching is per account).
+  # sessions stay on their subscription (prompt caching is per account). A bound session stays
+  # on its subscription until the upstream rejects it, so accounts with paid overage enabled keep
+  # serving that session even when another subscription still has headroom.
   # Enable universal session-sticky routing for all clients.
   # Explicit Claude Code, Codex, OpenCode, and pi session headers are preferred,
   # followed by prompt_cache_key, Responses conversation IDs, legacy body IDs,

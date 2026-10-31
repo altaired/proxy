@@ -98,21 +98,42 @@ func TestQuotaAwareSelector_Pick(t *testing.T) {
 	}
 }
 
-func TestQuotaAwareSelector_RoundRobinsCredentialsWithoutQuotaData(t *testing.T) {
+func TestQuotaAwareSelector_RoundRobinsCredentialsWithoutResetTime(t *testing.T) {
 	t.Parallel()
-	selector := &QuotaAwareSelector{}
-	auths := []*Auth{{ID: "a", Provider: "gemini"}, {ID: "b", Provider: "gemini"}}
-
-	var got []string
-	for range 3 {
-		picked, err := selector.Pick(context.Background(), "gemini", "", cliproxyexecutor.Options{}, auths)
-		if err != nil {
-			t.Fatalf("Pick() error = %v", err)
-		}
-		got = append(got, picked.ID)
+	known := claudeSubscription("c-known", 0.10, time.Now().Add(3*time.Hour), 0)
+	tests := []struct {
+		name     string
+		provider string
+		auths    []*Auth
+	}{
+		{
+			name:     "credentials without quota data",
+			provider: "gemini",
+			auths:    []*Auth{{ID: "a", Provider: "gemini"}, {ID: "b", Provider: "gemini"}},
+		},
+		{
+			// Concurrent traffic after a restart must not pin every new session to one account.
+			name:     "unobserved subscriptions",
+			provider: "claude",
+			auths:    []*Auth{claudeSubscription("a", -1, time.Time{}, 0), claudeSubscription("b", -1, time.Time{}, 0), known},
+		},
 	}
-	if want := []string{"a", "b", "a"}; got[0] != want[0] || got[1] != want[1] || got[2] != want[2] {
-		t.Fatalf("Pick() sequence = %v, want %v", got, want)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			selector := &QuotaAwareSelector{}
+			var got []string
+			for range 3 {
+				picked, err := selector.Pick(context.Background(), tt.provider, "", cliproxyexecutor.Options{}, tt.auths)
+				if err != nil {
+					t.Fatalf("Pick() error = %v", err)
+				}
+				got = append(got, picked.ID)
+			}
+			if want := []string{"a", "b", "a"}; got[0] != want[0] || got[1] != want[1] || got[2] != want[2] {
+				t.Fatalf("Pick() sequence = %v, want %v", got, want)
+			}
+		})
 	}
 }
 
@@ -213,5 +234,22 @@ func TestManager_QuotaAwareUsesLatestObservationAcrossModelShards(t *testing.T) 
 	picked, err := manager.scheduler.pickSingle(context.Background(), "claude", "model-b", cliproxyexecutor.Options{}, nil)
 	if err != nil || picked.ID != "quota-b" {
 		t.Fatalf("pickSingle(model-b) after exhaustion = (%v, %v), want quota-b", picked, err)
+	}
+}
+
+func TestSchedulerPick_QuotaAwareRoundRobinsUnobservedSubscriptions(t *testing.T) {
+	t.Parallel()
+	scheduler := newSchedulerForTest(
+		&QuotaAwareSelector{},
+		claudeSubscription("b", -1, time.Time{}, 0),
+		claudeSubscription("a", -1, time.Time{}, 0),
+		claudeSubscription("c-known", 0.10, time.Now().Add(3*time.Hour), 0),
+	)
+
+	for index, wantID := range []string{"a", "b", "a"} {
+		got, err := scheduler.pickSingle(context.Background(), "claude", "", cliproxyexecutor.Options{}, nil)
+		if err != nil || got.ID != wantID {
+			t.Fatalf("pickSingle() #%d = (%v, %v), want %s", index, got, err, wantID)
+		}
 	}
 }

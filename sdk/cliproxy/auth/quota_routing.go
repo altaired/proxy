@@ -14,9 +14,10 @@ import (
 // that will still be there later. Among subscription credentials with headroom it
 // picks the one whose longest quota window (the weekly limit) resets soonest, which
 // drains it before moving on and keeps new sessions on one account. Credentials it
-// has never observed are tried first so a single response teaches it their windows.
-// Credentials without quota data (API keys, providers that do not report usage)
-// keep round-robin behavior.
+// has never observed are tried first, in round-robin so concurrent traffic after a
+// restart spreads out instead of pinning every new session to one account until a
+// response reports its usage. Credentials without quota data (API keys, providers
+// that do not report usage) keep round-robin behavior.
 type QuotaAwareSelector struct {
 	roundRobin RoundRobinSelector
 }
@@ -26,6 +27,7 @@ type quotaRoutingGroup int
 
 const (
 	// quotaGroupUnobserved is a subscription the proxy has no usage snapshot for yet.
+	// Snapshots are in-memory only, so every subscription starts here after a restart.
 	quotaGroupUnobserved quotaRoutingGroup = iota
 	// quotaGroupHeadroom is a subscription with remaining quota in every window.
 	quotaGroupHeadroom
@@ -48,8 +50,8 @@ type quotaWindow struct {
 	length    time.Duration
 }
 
-// Pick selects the available auth with the most urgent quota, falling back to
-// round-robin among credentials that rank equally without a reset time.
+// Pick selects the subscription with the soonest reset, or round-robins among the
+// best-ranked credentials when none of them has a reset time.
 func (s *QuotaAwareSelector) Pick(ctx context.Context, provider, model string, opts cliproxyexecutor.Options, auths []*Auth) (*Auth, error) {
 	now := time.Now()
 	available, err := getSelectorAvailableAuths(ctx, auths, provider, model, now)
@@ -66,7 +68,7 @@ func (s *QuotaAwareSelector) Pick(ctx context.Context, provider, model string, o
 			best = i
 		}
 	}
-	if ranks[best].group <= quotaGroupHeadroom {
+	if ranks[best].group == quotaGroupHeadroom {
 		return available[best], nil
 	}
 	tied := make([]*Auth, 0, len(available))
@@ -82,7 +84,7 @@ func (s *QuotaAwareSelector) Pick(ctx context.Context, provider, model string, o
 func (m *modelScheduler) pickQuotaAwareLocked(view *readyView, predicate func(*scheduledAuth) bool) *scheduledAuth {
 	rankOf := m.quotaRankFunc(time.Now())
 	best, bestRank := bestQuotaAwareEntry(view.flat, predicate, rankOf)
-	if best == nil || bestRank.group <= quotaGroupHeadroom {
+	if best == nil || bestRank.group == quotaGroupHeadroom {
 		return best
 	}
 	return view.pickRoundRobin(func(entry *scheduledAuth) bool {
