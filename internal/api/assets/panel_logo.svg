@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="52">
+  <defs>
+    <linearGradient id="cpa-t" gradientUnits="userSpaceOnUse" x1="56" y1="0" x2="330" y2="0"><stop offset="0" stop-color="#0A7CFF"/><stop offset=".55" stop-color="#8B3FE0"/><stop offset="1" stop-color="#EC4872"/></linearGradient>
+    <linearGradient id="cpa-m" gradientUnits="userSpaceOnUse" x1="56" y1="0" x2="330" y2="0"><stop offset="0" stop-color="#14408F"/><stop offset="1" stop-color="#EC4872"/></linearGradient>
+    <linearGradient id="cpa-b" gradientUnits="userSpaceOnUse" x1="56" y1="0" x2="330" y2="0"><stop offset="0" stop-color="#FF9F2E"/><stop offset="1" stop-color="#F7684F"/></linearGradient>
+    <linearGradient id="cpa-s" gradientUnits="userSpaceOnUse" x1="300" y1="0" x2="470" y2="0"><stop offset="0" stop-color="#EC4872"/><stop offset="1" stop-color="#FF8A3D"/></linearGradient>
+  </defs>
+  <path d="M58 256H330" stroke="url(#cpa-m)" opacity=".8"/>
+  <path d="M58 140H184C264 140 264 256 336 256" stroke="url(#cpa-t)"/>
+  <path d="M58 372H184C264 372 264 256 336 256" stroke="url(#cpa-b)"/>
+  <path d="M310 256H404" stroke="url(#cpa-s)"/>
+  <path d="M388 178L466 256L388 334Z" fill="url(#cpa-s)" stroke="url(#cpa-s)" stroke-width="28"/>
+</svg>
